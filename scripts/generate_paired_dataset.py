@@ -34,7 +34,7 @@ class Render:
 
 
         ## Render information
-        self.camera_d_limits = [0, 5] # Define range of heights z in m that the camera is going to pan through
+        self.camera_d_limits = [0, 10] # Define range of heights z in m that the camera is going to pan through
         self.beta_limits     = [5, -15] # Define range of beta angles that the camera is going to pan through
         self.gamma_limits    = [-60, 60] # Define range of gamma angles that the camera is going to pan through
         
@@ -44,20 +44,22 @@ class Render:
         self.labels_filepath = None
         
          # elouan windows
-        self.hdri_images_path = 'C:/Users/ecu01/Documents/Blender/Sign/textures/environment'
-        self.output_path = 'C:/Users/ecu01/Documents/Blender/output_sign/'
+        #self.hdri_images_path = 'C:/Users/ecu01/Documents/Blender/Sign/textures/environment'
+        #self.output_path = 'C:/Users/ecu01/Documents/Blender/output_sign/'
 
         # gio windows
-        self.hdri_images_path = 'C:/Users/gbi02/Desktop/syntetic_dataset_blender_generator_trafficsigns/textures/environment'
-        self.output_path = 'C:/Users/gbi02/Desktop/trafficsigns_yolo_datasets'
+        #self.hdri_images_path = 'C:/Users/gbi02/Desktop/syntetic_dataset_blender_generator_trafficsigns/textures/environment'
+        #self.output_path = 'C:/Users/gbi02/Desktop/trafficsigns_yolo_datasets'
         
         # gio linux
-        #self.hdri_images_path = '/home/gionji/MDU/Blender/projects/syntetic_dataset_blender_generator_trafficsigns/textures/environment/'
-        #self.output_path = '/home/gionji/MDU/Datasets/blender_generated/'
+        self.hdri_images_path = '/home/gionji/MDU/Blender/projects/syntetic_dataset_blender_generator_trafficsigns/textures/environment/'
+        self.output_path = '/home/gionji/MDU/Datasets/blender_generated/'
         
         self.max_simulation_steps = -1
         
-        self.nickname = 'friday_test_shortpoles'
+        self.accept_render = 'y'
+        
+        self.nickname = 'falling_test_shortpoles'
         
         self.tick = 0
         self.tack = 0
@@ -185,7 +187,7 @@ class Render:
 
     
 
-    def change_environment(self, light_intensity=0.5):
+    def change_background_hdri_image(self, hdri_path, light_intensity=0.5) :
         # Get the current active scene
         scene = self.scene   
 
@@ -194,15 +196,17 @@ class Render:
             # Get the world node tree
             world_node_tree = scene.world.node_tree
             
+            ## Set the light emission density
             world_node_tree.nodes["Background"].inputs['Strength'].default_value = light_intensity
-            world_node_tree.nodes["Environment Texture"].image.filepath = self.pick_one_path( self.hdri_images_path )                    
+            ## Set the image source
+            world_node_tree.nodes["Environment Texture"].image.filepath = self.pick_one_path( hdri_path )                    
         
         bpy.context.view_layer.update()
         return
     
 
     
-    def edit_snow_effect(self):        
+    def edit_snow_effect(self, gain=0):        
         #iterate on all SIGNS materials
         # Get all materials in the scene
         materials = bpy.data.materials
@@ -215,11 +219,12 @@ class Render:
                 node_tree = material.node_tree
                 # Get all nodes in the node tree
                 nodes = node_tree.nodes
-                
-                bpy.context.object.active_material.name = material.name                 
-                bpy.data.node_groups["Snow and Ice Group"].nodes["snow_ice_bsdf"].inputs[1].default_value = random.uniform(0.8, 1.0)            
-                material.node_tree.nodes["Principled BSDF"].inputs[1].default_value = 0               
-                bpy.data.node_groups["Surface Effects Group"].nodes["ice_effect_ratio"].outputs[0].default_value = random.uniform(0.95, 1.0)
+                # Select the active material. still confused but whatever works
+                bpy.context.object.active_material.name = material.name
+
+                bpy.data.node_groups["Snow and Ice Group"].nodes["snow_ice_bsdf"].inputs[1].default_value = random.uniform(0.7, 1.0)            
+                material.node_tree.nodes["Principled BSDF"].inputs[1].default_value = gain               
+                bpy.data.node_groups["Surface Effects Group"].nodes["ice_effect_ratio"].outputs[0].default_value = random.uniform(0.7, 0.5)
 
                 bpy.context.view_layer.update()        
 
@@ -242,7 +247,6 @@ class Render:
 
             # Unlink the collection itself
             bpy.data.collections.remove(collection, do_unlink=True)
-
 
 
     def delete_objects_by_name_pattern(self, pattern):
@@ -268,8 +272,12 @@ class Render:
                     bpy.data.collections.remove(existing_copied_collection)         
             copied_collection = bpy.data.collections.new(real_actors_scene_name)
             bpy.context.scene.collection.children.link(copied_collection)
+            
+            original_objects = list(collection.objects.values())  # Convert dict values to a list
+            random_permutation = random.sample(original_objects, len(original_objects))
+            
             # Iterate over each sign in the original collection
-            for i, obj in enumerate(collection.objects):
+            for i, obj in enumerate(random_permutation):
                 # Copy the sign object
                 copied_obj = obj.copy()
                 copied_obj.data = obj.data.copy()
@@ -295,7 +303,7 @@ class Render:
         self.light_2.data.energy = energy2 # Update the <bpy.data.objects['Light2']> energy information
         # Change environment
         self.edit_shadow_projector_parameters(self.projector_noise_01)
-        self.change_environment(  random.uniform(0.2, 1.0) )
+        self.change_background_hdri_image( self.hdri_images_path, random.uniform(0.2, 1.0) )
         self.edit_snow_effect()
         self.edit_dirt_effect()
         
@@ -318,15 +326,20 @@ class Render:
             bpy.context.view_layer.objects.active = default_active_object     
         ## prechecks
         #self.list_materials_nodes_and_inputs()
-        # create the dataset output folder
+
+        ## create the dataset output folder
         self.create_output_folder( self.output_path , self.nickname )
         self.create_yolo_labels_file()       
+        
         ## Dispose the traffic signs in the scene
         self.dispose_objects()      
+        
         # update the environment 
         self.update_scene()
+        
         #accept_render = input('\nContinue?[Y/N]:  ') # Ask whether to procede with the data generation
-        accept_render = 'y'
+        accept_render = self.accept_render
+
 
         if accept_render == 'Y' or accept_render == 'y': # If the user inputs 'Y' then procede with the data generation
             # Create .txt file that record the progress of the data generation
@@ -344,7 +357,7 @@ class Render:
             rotation_step = rot_step
 
             # Begin nested loops
-            for d in range(dmin, dmax + 1, 2): # Loop to vary the height of the camera
+            for d in range(dmin, dmax + 1, 4): # Loop to vary the height of the camera
                 ## Update the height of the camera
                 self.camera.location = (0, -(20+d/10), 3)  # Divide the distance z by 10 to re-factor current height
                 #self.camera.location = (0, 0, d/10)  # Divide the distance z by 10 to re-factor current height
@@ -375,29 +388,25 @@ class Render:
                         ##---------------------------------------------------------------------------------------------------
                             
                         ## Generate render
-                        self.render_blender(render_counter) # Take photo of current scene and ouput the render_counter.png file
+                        self.edit_snow_effect(self, gain=0)                        
+                        self.render_blender(render_counter, 'clear') # Take photo of current scene and ouput the render_counter.png file
                         
+                        self.edit_snow_effect(self, gain=0.5)  
+                        self.render_blender(render_counter, 'snow')
+                    
                         # Display demo information - Photo information
                         #print("--> Picture information:")
                         #print("     Resolution:", (self.xpix*self.percentage, self.ypix*self.percentage))
                         #print("     Rendering samples:", self.samples)
 
                         ## Output Labels
-                        text_file_name = self.labels_filepath + '/' + str(render_counter) + '.txt' # Create label file name
-                        text_file = open(text_file_name, 'w+') # Open .txt file of the label
-                        
-                        # Get formatted coordinates of the bounding boxes of all the objects in the scene
-                        # Display demo information - Label construction
-                        print("---> Label Construction")
-                        text_coordinates = self.get_all_coordinates()
-                        splitted_coordinates = text_coordinates.split('\n')[:-1] # Delete last '\n' in coordinates
-                        text_file.write('\n'.join(splitted_coordinates)) # Write the coordinates to the text file and output the render_counter.txt file
-                        text_file.close() # Close the .txt file corresponding to the label
+                        self.write_annotation_file(render_counter)
  
                         ## Show progress on batch of renders
                         print('Progress =', str(render_counter) + '/' + str(n_renders))
                         #ureport.write('Progress: ' + str(render_counter) + ' Rotation: ' + str(axis_rotation) + ' z_d: ' + str(d / 10) + '\n')
                         
+                        ## Stop the simulation by a hardcoded limit of iterations. suggested for testing
                         if render_counter >= self.max_simulation_steps and self.max_simulation_steps > 0:
                             print('Reached maximum step number!!!!')
                             return
@@ -409,7 +418,19 @@ class Render:
             pass
 
 
-
+    def write_annotation_file(self, render_counter, suffix=''):
+        text_file_name = self.labels_filepath + '/' + str(render_counter) + '-' + suffix + '.txt' # Create label file name
+        text_file = open(text_file_name, 'w+') # Open .txt file of the label
+        
+        # Get formatted coordinates of the bounding boxes of all the objects in the scene
+        # Display demo information - Label construction
+        print("---> Label Construction")
+        text_coordinates = self.get_all_coordinates()
+        splitted_coordinates = text_coordinates.split('\n')[:-1] # Delete last '\n' in coordinates
+        text_file.write('\n'.join(splitted_coordinates)) # Write the coordinates to the text file and output the render_counter.txt file
+        text_file.close() # Close the .txt file corresponding to the label
+ 
+        return
 
 
     def get_all_coordinates(self):
@@ -547,17 +568,17 @@ class Render:
         
         
 
-    def render_blender(self, count_f_name):
+    def render_blender(self, count_f_name, suffix=''):
         # Define random parameters
         random.seed(random.randint(1,1000))
         self.xpix = random.randint(500, 1000)
         self.ypix = random.randint(500, 1000)
         self.xpix = 640
         self.ypix = 640
-        self.percentage = random.randint(90, 100)
+        self.percentage = random.randint(100, 100)
         self.samples = random.randint(25, 50)
         # Render images
-        image_name = str(count_f_name) + '.png'
+        image_name = str(count_f_name) + '-' + suffix +'.png'
         self.export_render(self.xpix, self.ypix, self.percentage, self.samples, self.images_filepath, image_name)
 
     def export_render(self, res_x, res_y, res_per, samples, file_path, file_name):
