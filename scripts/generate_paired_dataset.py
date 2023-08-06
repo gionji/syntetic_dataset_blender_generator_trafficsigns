@@ -11,6 +11,13 @@ import fnmatch
 ## Main Class
 class Render:
     def __init__(self):
+
+        self.max_simulation_steps = 10
+        self.accept_render = 'y'
+        self.nickname = 'paired_dataset'
+
+        self.initial_camera_location = (0, -5, 3)
+
         ## Scene information
         # Define the scene information
         self.scene = bpy.data.scenes['Scene']
@@ -54,19 +61,13 @@ class Render:
         # gio linux
         self.hdri_images_path = '/home/gionji/MDU/Blender/projects/syntetic_dataset_blender_generator_trafficsigns/textures/environment/'
         self.output_path = '/home/gionji/MDU/Datasets/blender_generated/'
-        
-        self.max_simulation_steps = -1
-        
-        self.accept_render = 'y'
-        
-        self.nickname = 'falling_test_shortpoles'
-        
+
         self.tick = 0
         self.tack = 0
         self.max_render_time = 0
         
 
-## Helpers methods
+    ## Helpers methods
     def create_output_folder(self, path, nickname):
         current_datetime = datetime.now()
         folder_name = current_datetime.strftime("%Y_%m_%d-%H_%M") + "-" + nickname
@@ -102,7 +103,10 @@ class Render:
         # Randomly select a file name
         random_file_name = random.choice(file_names)
         # Create the full file path
-        random_file_path = os.path.join(folder_path, random_file_name)        
+        random_file_path = os.path.join(folder_path, random_file_name)
+
+        print('background image:', random_file_name)
+
         return random_file_path        
 
 
@@ -142,7 +146,7 @@ class Render:
     def set_camera(self):
         self.axis.rotation_euler = (0, 0, 0)
         self.axis.location = (0, 20, 0)
-        self.camera.location = (0, -15, 3)
+        self.camera.location = self.initial_camera_location
 
 
     def edit_shadow_projector_parameters(self, 
@@ -217,14 +221,31 @@ class Render:
             if material.use_nodes and any(s in material.name for s in self.obj_names) : 
                 # Get the node tree of the material
                 node_tree = material.node_tree
-                # Get all nodes in the node tree
+                # Get all nodes in the node treePrincipled
                 nodes = node_tree.nodes
                 # Select the active material. still confused but whatever works
                 bpy.context.object.active_material.name = material.name
+                  
+                bpy.data.node_groups["Surface Effects Group"].nodes["ice_effect_ratio"].outputs[0].default_value =  1 - gain
 
-                bpy.data.node_groups["Snow and Ice Group"].nodes["snow_ice_bsdf"].inputs[1].default_value = random.uniform(0.7, 1.0)            
-                material.node_tree.nodes["Principled BSDF"].inputs[1].default_value = gain               
-                bpy.data.node_groups["Surface Effects Group"].nodes["ice_effect_ratio"].outputs[0].default_value = random.uniform(0.7, 0.5)
+                bpy.data.node_groups["Snow and Ice Group"].nodes["snow_ice_bsdf"].inputs[1].default_value = random.uniform(0.05, 0.20)                 
+                material.node_tree.nodes["Principled BSDF"].inputs[1].default_value = 0       
+
+                ## size of the snow
+                bpy.data.node_groups["Snow and Ice Group"].nodes["Noise Texture"].inputs[2].default_value = random.uniform(0.1, 15) 
+
+                ## Proportions of the snow texture
+                bpy.data.node_groups["Snow and Ice Group"].nodes["Mapping.002"].inputs[3].default_value[0] = 0.8
+                bpy.data.node_groups["Snow and Ice Group"].nodes["Mapping.002"].inputs[3].default_value[1] = 0.5
+
+                # Color map. the depth of the snowflake
+                bpy.data.node_groups["Snow and Ice Group"].nodes["Snowflake depth"].color_ramp.elements[0].position = random.uniform(0.2, 0.6) 
+                bpy.data.node_groups["Snow and Ice Group"].nodes["Snowflake depth"].color_ramp.elements[1].position = random.uniform(0.2, 0.6) 
+
+                ## effetto fico brina
+                bpy.data.node_groups["Snow and Ice Group"].nodes["snow_ice_bsdf"].inputs[5].default_value = 0.736364
+
+
 
                 bpy.context.view_layer.update()        
 
@@ -286,7 +307,7 @@ class Render:
                 # Calculate the x and y position of the sign
                 x = i * sign_distance - 15
                 y = random.uniform(35.0, 45.0)
-                z = random.uniform(1.0, 2.0)
+                z = random.uniform(0.0, 4.0)
                 # Set the position of the copied sign
                 copied_obj.location = (x, y, z)
             # Update the scene
@@ -303,7 +324,7 @@ class Render:
         self.light_2.data.energy = energy2 # Update the <bpy.data.objects['Light2']> energy information
         # Change environment
         self.edit_shadow_projector_parameters(self.projector_noise_01)
-        self.change_background_hdri_image( self.hdri_images_path, random.uniform(0.2, 1.0) )
+        self.change_background_hdri_image( self.hdri_images_path, random.uniform(0.5, 1.0) )
         self.edit_snow_effect()
         self.edit_dirt_effect()
         
@@ -332,7 +353,7 @@ class Render:
         self.create_yolo_labels_file()       
         
         ## Dispose the traffic signs in the scene
-        self.dispose_objects()      
+        self.dispose_objects(sign_distance=5)      
         
         # update the environment 
         self.update_scene()
@@ -359,7 +380,8 @@ class Render:
             # Begin nested loops
             for d in range(dmin, dmax + 1, 4): # Loop to vary the height of the camera
                 ## Update the height of the camera
-                self.camera.location = (0, -(20+d/10), 3)  # Divide the distance z by 10 to re-factor current height
+                camera_y = - (abs(self.initial_camera_location[1]) + d/10)
+                self.camera.location = (0, -(5+d/10), 3)  
                 #self.camera.location = (0, 0, d/10)  # Divide the distance z by 10 to re-factor current height
 
                 # Refactor the beta limits for them to be in a range from 0 to 360 to adapt the limits to the for loop
@@ -388,10 +410,11 @@ class Render:
                         ##---------------------------------------------------------------------------------------------------
                             
                         ## Generate render
-                        self.edit_snow_effect(self, gain=0)                        
+                        self.edit_snow_effect(gain=0)                        
                         self.render_blender(render_counter, 'clear') # Take photo of current scene and ouput the render_counter.png file
                         
-                        self.edit_snow_effect(self, gain=0.5)  
+                        self.change_background_hdri_image( self.hdri_images_path +'/snowy/', random.uniform(0.5, 1.0) )
+                        self.edit_snow_effect(gain=0.5)  
                         self.render_blender(render_counter, 'snow')
                     
                         # Display demo information - Photo information
